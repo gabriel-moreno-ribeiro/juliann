@@ -1,15 +1,14 @@
 # JuliaNN
 
-A neural network library written from scratch in Julia: layers with
-hand-written backpropagation, losses, SGD with momentum and Adam, a
-mini-batch training loop, and gradient checking to prove the derivatives
-are right. Only the standard library is used (no Flux, no autodiff).
+Uma biblioteca de redes neurais em Julia, sem Flux e sem autodiff: camadas com backpropagation escrita à mão, funções de perda, SGD com momentum e Adam, loop de treino em mini-batches, e gradient checking pra provar que as derivadas estão certas.
+
+Fiz depois de anos usando PyTorch sem nunca ter derivado um softmax na mão. O objetivo não era performance, era não ter mais nenhuma parte da rede que eu não soubesse explicar.
 
 ```julia
 using JuliaNN, Random
 
 rng = MersenneTwister(42)
-X, labels = spiral_data(150, 3; rng = rng)      # 2 x 450 points, three spiral arms
+X, labels = spiral_data(150, 3; rng = rng)      # 2 x 450 pontos, três braços de espiral
 Y = onehot(labels, 3)
 
 model = Sequential(
@@ -19,51 +18,38 @@ model = Sequential(
 )
 train!(model, SoftmaxCrossEntropy(), Adam(0.01), X, Y; epochs = 300, batchsize = 32, rng = rng)
 accuracy(model, X, Y)                            # ~0.99
-classify(model, [0.3; -0.5;;])                   # predicted class of one point
 ```
 
 ```sh
 julia --project examples/xor.jl
-julia --project examples/spiral.jl               # prints the decision boundary as ASCII art
+julia --project examples/spiral.jl               # imprime a fronteira de decisão em ASCII
 ```
 
-## What is inside
-
-| Piece | Details |
+| Peça | Detalhe |
 | --- | --- |
-| `Dense(in => out)` | `y = W x + b`, He initialisation, caches `x` for the backward pass |
-| `Activation(:relu \| :sigmoid \| :tanh \| :softmax)` | element-wise, with exact derivatives (softmax uses the full Jacobian) |
-| `Sequential(layers...)` | forward in order, backward in reverse |
-| `MSE()`, `CrossEntropy()`, `SoftmaxCrossEntropy()` | scalar loss and its gradient with respect to the prediction; the fused version works on logits and is numerically stable |
-| `SGD(lr; momentum)`, `Adam(lr)` | optimisers keyed per parameter array |
-| `train!` | shuffles, batches, forward, loss, backward, update; returns the loss history |
-| `numerical_gradient` | central finite differences over every weight, used by the tests |
-| `spiral_data`, `onehot`, `accuracy`, `classify`, `save_model` / `load_model` | helpers |
+| `Dense(in => out)` | `y = W x + b`, inicialização de He, guarda `x` pro backward |
+| `Activation(:relu \| :sigmoid \| :tanh \| :softmax)` | derivadas exatas (softmax usa a Jacobiana inteira) |
+| `Sequential` | forward em ordem, backward ao contrário |
+| `MSE`, `CrossEntropy`, `SoftmaxCrossEntropy` | a versão fundida trabalha em logits e é numericamente estável |
+| `SGD(lr; momentum)`, `Adam(lr)` | estado por array de parâmetros |
+| `train!` | embaralha, faz batches, forward, loss, backward, update; devolve o histórico |
+| `numerical_gradient` | diferenças finitas centrais sobre todos os pesos |
 
-Data is laid out as `features x batch`, so a layer's weight is `out x in` and
-a batch is one matrix multiplication.
+Os dados ficam como `features x batch`, então o peso de uma camada é `out x in` e um batch inteiro é uma multiplicação de matriz só. Julia com BLAS por baixo faz isso rápido o suficiente pra treinar o exemplo da espiral em segundos.
 
-## How backpropagation is implemented
+## Backprop
 
-Every layer stores what it needs during `forward` and, given the gradient of
-the loss with respect to its output, returns the gradient with respect to its
-input while recording the gradients of its own parameters:
+Cada camada guarda o que precisa no `forward` e, dado o gradiente da loss em relação à saída, devolve o gradiente em relação à entrada e anota os gradientes dos próprios parâmetros:
 
 ```julia
 forward(l::Dense, x)   = (l.x = x; l.W * x .+ l.b)
 backward(l::Dense, dy) = (l.dW = dy * x'; l.db = sum(dy, dims = 2); l.W' * dy)
 ```
 
-`Sequential.backward` just chains these from the last layer to the first.
-The test-suite compares every analytic gradient with finite differences on
-four different architectures and losses, to a relative error below 1e-6.
+`Sequential.backward` só encadeia isso de trás pra frente. A suíte compara todo gradiente analítico com diferenças finitas em quatro arquiteturas e losses, com erro relativo abaixo de 1e-6. Quando esse teste passou pela primeira vez eu entendi por que gradient checking é a primeira coisa que qualquer curso sério manda fazer.
 
-## Tests
+Testes: `julia --project -e 'using Pkg; Pkg.test()'`.
 
-```sh
-julia --project -e 'using Pkg; Pkg.test()'
-```
+---
 
-## License
-
-MIT
+**EN:** a neural network library in plain Julia: dense layers with hand-derived backpropagation, activations with exact derivatives (softmax with the full Jacobian), MSE and cross-entropy losses, SGD with momentum and Adam, a mini-batch training loop, and finite-difference gradient checking that the test-suite runs on several architectures (relative error < 1e-6). MIT.
