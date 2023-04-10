@@ -1,5 +1,7 @@
 # JuliaNN
 
+> 🇺🇸 [English version below](#english)
+
 Uma biblioteca de redes neurais em Julia, sem Flux e sem autodiff: camadas com backpropagation escrita à mão, funções de perda, SGD com momentum e Adam, loop de treino em mini-batches, e gradient checking pra provar que as derivadas estão certas.
 
 Fiz depois de anos usando PyTorch sem nunca ter derivado um softmax na mão. O objetivo não era performance, era não ter mais nenhuma parte da rede que eu não soubesse explicar.
@@ -52,4 +54,56 @@ Testes: `julia --project -e 'using Pkg; Pkg.test()'`.
 
 ---
 
-**EN:** a neural network library in plain Julia: dense layers with hand-derived backpropagation, activations with exact derivatives (softmax with the full Jacobian), MSE and cross-entropy losses, SGD with momentum and Adam, a mini-batch training loop, and finite-difference gradient checking that the test-suite runs on several architectures (relative error < 1e-6). MIT.
+## English
+
+A neural network library in Julia, no Flux and no autodiff: layers with hand-written backpropagation, loss functions, SGD with momentum and Adam, a mini-batch training loop, and gradient checking to prove the derivatives are right.
+
+I did it after years of using PyTorch without ever having derived a softmax by hand. The goal wasn't performance, it was not having a single part of the network left that I couldn't explain.
+
+```julia
+using JuliaNN, Random
+
+rng = MersenneTwister(42)
+X, labels = spiral_data(150, 3; rng = rng)      # 2 x 450 points, three spiral arms
+Y = onehot(labels, 3)
+
+model = Sequential(
+    Dense(2 => 32; rng = rng), Activation(:relu),
+    Dense(32 => 32; rng = rng), Activation(:relu),
+    Dense(32 => 3; rng = rng),
+)
+train!(model, SoftmaxCrossEntropy(), Adam(0.01), X, Y; epochs = 300, batchsize = 32, rng = rng)
+accuracy(model, X, Y)                            # ~0.99
+```
+
+```sh
+julia --project examples/xor.jl
+julia --project examples/spiral.jl               # prints the decision boundary in ASCII
+```
+
+| Piece | Detail |
+| --- | --- |
+| `Dense(in => out)` | `y = W x + b`, He initialization, keeps `x` for the backward pass |
+| `Activation(:relu \| :sigmoid \| :tanh \| :softmax)` | exact derivatives (softmax uses the whole Jacobian) |
+| `Sequential` | forward in order, backward in reverse |
+| `MSE`, `CrossEntropy`, `SoftmaxCrossEntropy` | the fused version works on logits and is numerically stable |
+| `SGD(lr; momentum)`, `Adam(lr)` | state per parameter array |
+| `train!` | shuffles, batches, forward, loss, backward, update; returns the history |
+| `numerical_gradient` | central finite differences over every weight |
+
+Data is kept as `features x batch`, so a layer's weight is `out x in` and a whole batch is a single matrix multiplication. Julia with BLAS underneath makes that fast enough to train the spiral example in seconds.
+
+## Backprop
+
+Every layer stores what it needs in `forward` and, given the gradient of the loss with respect to the output, returns the gradient with respect to the input and records its own parameters' gradients:
+
+```julia
+forward(l::Dense, x)   = (l.x = x; l.W * x .+ l.b)
+backward(l::Dense, dy) = (l.dW = dy * x'; l.db = sum(dy, dims = 2); l.W' * dy)
+```
+
+`Sequential.backward` just chains that back to front. The suite compares every analytic gradient against finite differences on four architectures and losses, with relative error below 1e-6. When that test passed for the first time I understood why gradient checking is the first thing any serious course tells you to do.
+
+Tests: `julia --project -e 'using Pkg; Pkg.test()'`.
+
+MIT.
