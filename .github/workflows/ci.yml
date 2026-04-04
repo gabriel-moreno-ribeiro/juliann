@@ -4,10 +4,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: julia-actions/setup-julia@v1
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
         with:
-          version: "1.8"
+          version: "1.11"
       - run: julia --project -e 'using Pkg; Pkg.test()'
       - run: julia --project examples/xor.jl
       - run: julia --project examples/spiral.jl
